@@ -24,6 +24,7 @@ struct Command {
 static struct Command commands[] = {
 	{ "help", "Display this list of commands", mon_help },
 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
+	{ "backtrace", "Display information about the backtrace", mon_backtrace }
 };
 
 /***** Implementations of basic kernel monitor commands *****/
@@ -54,14 +55,65 @@ mon_kerninfo(int argc, char **argv, struct Trapframe *tf)
 	return 0;
 }
 
+
+uintptr_t  read_eip(){
+	uintptr_t eip;  //0xf010099c;
+	asm("movl 4(%%esp), %%eax;"
+      "movl %%eax, %0;"
+        :"=r"(eip)
+        :
+        :"%eax");
+	return eip;
+}
+
 int
 mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 {
-	// Your code here.
+	uintptr_t ebp = read_ebp();
+	uintptr_t eip = read_eip();  //0xf010099c;
+	struct Eipdebuginfo info;
+	uintptr_t aux;
+	uintptr_t auxebp;
+	//temporal
+	while (ebp < 0Xf010fffa) {
+		debuginfo_eip(eip, &info);
+		cprintf("ebp %08x  eip %08x  args ", ebp, info.eip_fn_addr);
+		auxebp = ebp;
+		auxebp -= 20;
+		auxebp += ((info.eip_fn_narg-1)*4);
+		for (size_t i = 0; i <  info.eip_fn_narg; i++) {
+					 asm("movl (%1), %%eax;"
+							 "movl %%eax, %0;"
+								 :"=r"(aux)
+								 :"r" (auxebp)
+								 :"%eax");
+					 cprintf("%08x ", aux);
+					 auxebp -= 4;
+		}
+		for (size_t i = info.eip_fn_narg; i < 5; i++) {
+				cprintf("%08x ", auxebp);
+		 		auxebp += 4;
+		}
+	cprintf("\n   %.*s:", info.eip_line, info.eip_file);
+ 	cprintf("%04d: ", info.eip_line);
+ 	cprintf("%.*s+", info.eip_fn_namelen, info.eip_fn_name);
+	int aux2 = eip-info.eip_fn_addr;
+ 	cprintf("%03d\n", aux2);
+
+ 	asm("movl (%1), %%eax;"
+ 			"movl %%eax, %0;"
+ 				:"=r"(eip)
+ 				:"r" (ebp +4)
+ 				:"%eax");
+	 asm("movl (%1), %%eax;"
+			 "movl %%eax, %0;"
+				 :"=r"(ebp)
+				 :"r" (ebp)
+				 :"%eax");
+	}
+
 	return 0;
 }
-
-
 
 /***** Kernel monitor command interpreter *****/
 
